@@ -1,0 +1,28 @@
+https://www.txhigheredaccountability.org/AcctPublic/InteractiveReport/AddReport
+
+public_univ_all_cip_thecb
+-statewide public universities
+-degrees and certificates by curriculum area
+-all cips
+-2023 and 2024 grad years
+
+com_college_all_cip_thecb
+-statewide community colleges
+-degrees and certificates by curriculum area
+-all cips
+-2023 and 2024 grad years
+
+lamar_state_colleges_all_cip_thecb
+-all lamar state colleges
+-degrees and certificates by curriculum area
+-all cips
+-2023 and 2024 grad years
+
+tstc_all_cip_thecb
+-all tstc locations
+-degrees and certificates by curriculum area
+-all cips
+-2023 and 2024 grad years
+
+
+-all others offer persistence and completion rates only

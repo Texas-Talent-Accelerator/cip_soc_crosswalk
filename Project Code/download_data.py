@@ -5,113 +5,96 @@ sys.path.append(r"C:\Users\cmg0530\Code Library\gis_suite")
 from analysis_main import *
 from export_dataframes import *
 import pandas as pd
+import os
 
-
-def read_in_cip_soc():
+#%%new functions to be moved into their own file
+def read_in_cip_soc() -> pd.core.frame.DataFrame:
+    #this is drawn from the nces website
     cs = pd.read_excel(r"https://nces.ed.gov/ipeds/cipcode/Files/CIP2020_SOC2018_Crosswalk.xlsx",
                        sheet_name="CIP-SOC")
     return cs
+
+def process_cip_soc(cs) -> pd.core.frame.DataFrame:
+    #lets process cip to be ##.#### with trailing zeros for consistency
+    #split along the decimal
+    #first part of decimal - make sure its 2 digits with leading 0
+    #second part of decimal - make sure its 4 digits with trailing 0
+    cs["cip_join_key"] = cs['CIP2020Code'].astype(str).apply(lambda x: f"{x.split('.')[0].zfill(2)}.{x.split('.')[1].ljust(4,'0')}")
+    return cs
+
+def read_in_thecb(fp=r"C:\Users\cmg0530\Projects\cip_soc_crosswalk\Data Downloads\THECB") -> dict:
+    #this is drawn from a series of downloads located here, but pulled from thecb site
+    #source location = https://www.txhigheredaccountability.org/AcctPublic/InteractiveReport/AddReport
     
-#create sqlite database
-def create_db(db_path=r"C:\Users\cmg0530\Projects\cip_soc_crosswalk\Databases\cipsoc.sqlite"):
-    con = create_conn(db_path)
-    print(f"DB at {db_path}")
-    return con
+    #list all files
+    all_files = os.listdir(fp)
+    files = [y for y in all_files if y.endswith("csv")]
     
-
-#upload standard cip-soc to database
-def upload_to_sqlite(
-    crsr, con, df, table_name="test__", schema="dbo", drop=True, chunk_print_size=50
-):
-    """
-    chunk_print_size = number of rows to print count when uploading
-    """
-
-    pd.options.mode.chained_assignment = None
-
-    print("Writing DataFrame into sql table.")
-    print(f"Table name: {schema}.{table_name}")
-
-    # rename columns
-    df.columns = [
-        y.replace(" ", "_").replace(":", "").replace("(", "").replace(")", "").lower()
-        for y in df.columns
-    ]
-
-    # default all to varchars
-    columns = df.columns.tolist()
-    format_columns = [f"{x} TEXT" for x in columns]
-
-    # adjust formatting
-    for x in columns:
-        df[x] = df[x].astype(str)
-        # adjust datetime
-        if x in df.select_dtypes(include=["datetime64[ns, UTC]"]).columns.tolist():
-            df[x] = df[x].dt.strftime("%Y-%m-%d")
-
-    # if the drop parameter is True, then drop the existing table
-    if drop == True:
+    #read into a dictionary named by filename
+    f_dict = {}
+    for z in files:
         try:
-            print("Trying to drop old table.")
-            crsr.execute(
-                f"""SELECT CASE 
-                WHEN EXISTS (
-                    SELECT 1 
-                    FROM sqlite_master 
-                    WHERE type = 'table' 
-                    AND name = '{table_name}'
-                        ) THEN 1 
-                        ELSE 0 
-                    END;""")
-            con.commit()
-            print("Dropped!")
-        except Exception as e:
-            print("No existing table to drop.")
-            print(f"Exception: {e}")
+            print(f"reading in {z}")
+            f = pd.read_csv(os.path.join(fp,z),header=1,encoding='ISO-8859-1')
+            f_dict[z.split(".csv")[0]] = f
+        except:
+            print(f"couldn't read {z}")
+    print("returning dict")
+    return f_dict
 
-        try:
-            print("Creating new sql table...")
-            crsr.execute(
-                fr"""CREATE TABLE IF NOT EXISTS {schema}_{table_name}(
-                {",".join(format_columns)});""")
-            con.commit()
-            print("Done.")
-        except Exception as e:
-            print("Could not create new table.")
-            print(f"Exception: {e}")
+def process_thecb(thecb_dict) -> pd.core.frame.DataFrame:
 
-    print(f"Writing in {len(df)} rows.")
+    #make one big dataframe
+    bf = pd.DataFrame()
+    for q in thecb_dict.keys():
+        z = thecb_dict[q]
+        z['table_name'] = q
+        bf = pd.concat([bf,z])
 
-    print("Uploading...")
-    for index, row in df.reset_index().iterrows():
-        try:
-            if index % chunk_print_size == 0:
-                print(f"{index} out of {len(df)}")
-            crsr.execute(
-                f"""INSERT INTO {schema}_{table_name}
-            ({",".join(columns)}) values ({",".join(["?"] * len(columns))})""",
-                row[1:].tolist(),
-            )
-        except Exception as e:
-            print(f"Could not upload {index}")
-            print(f"Exception: {e}")
+    #process cip 
+    #cip should be in format ##.#### with trailing zeros
+    bf["cip_join_key"] = bf['CIPDesc'].apply(lambda x: x.split(" -")[0])
+    bf["cip_join_key"] = bf['cip_join_key'].apply(lambda x: f"{x[:2]}.{x[2:6]}".ljust(7, '0'))
 
-    con.commit()
-    print("Done!")
+    #to add - processing name of institution to a geographic code (tbd which one)
+    return bf  
 
 
 #%%
-#download from database 
-cs = read_in_cip_soc()
-#upload into database
-con = create_db()
+#download cip soc and process 
+csdf = read_in_cip_soc()
+csdf = process_cip_soc(csdf)
+
+#download thecb and process
+thecb_dict = read_in_thecb()
+tdf = process_thecb(thecb_dict)
+
+#connect to database
+db_path = r'C:\\Users\\cmg0530\\Projects\\cip_soc_crosswalk\\Databases\\cipsoc.sqlite'
+con = create_conn(db_path)
+
+#upload two tables cip to soc to database: cip-soc and thecb data
 upload_to_sqlite(con.cursor(), 
                  con, 
-                 cs, 
-                 table_name="cip_soc",
-                 schema="test", 
+                 csdf, 
+                 table_name="cip_soc_nces",
+                 schema="ref", 
                  drop=True, 
-                 chunk_print_size=10)
+                 chunk_print_size=1000)
+
+upload_to_sqlite(con.cursor(), 
+                 con, 
+                 tdf, 
+                 table_name="thecb_data",
+                 schema="ref", 
+                 drop=True, 
+                 chunk_print_size=1000)
+
+#now write code to merge them into a new table
+#program - institution - occupation
+
+#read in the thecb data
+
 
 #upload to interactive portal for editing
     #(link to interactive portal for editing)
