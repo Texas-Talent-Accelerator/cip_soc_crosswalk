@@ -90,12 +90,15 @@ upload_to_sqlite(con.cursor(),
                  drop=True, 
                  chunk_print_size=1000)
 
-#now write code to merge them into a new table
-#program - institution - occupation
+#need a general function that can map education data with occupation data 
 
-#read in the thecb data
+#build out a final table that looks like:
+    #program - institution - occupation
 
 
+
+
+#%%
 #upload to interactive portal for editing
     #(link to interactive portal for editing)
     #function that pulls from the sqlite3
