@@ -59,6 +59,26 @@ def process_thecb(thecb_dict) -> pd.core.frame.DataFrame:
     #to add - processing name of institution to a geographic code (tbd which one)
     return bf  
 
+def map_programs_to_schools(con):
+    crsr = con.cursor()
+    crsr.execute("DROP TABLE IF EXISTS join_program_occupations")
+    crsr.execute("""CREATE TABLE 
+                 join_program_occupations
+                 AS 
+                 select 
+                    thecb.cip_join_key as cip_join_key,
+                    thecb.dimyear as year,
+                    thecb.levelgroupdesc as institution_type,
+                    thecb.instlist as institution,
+                    thecb.cipdesc as cip_description,
+                    thecb.count as grad_count,
+                    cip.soc2018code as soc_code,
+                    cip.soc2018title as soc_title  FROM
+          (SELECT * FROM ref_thecb_data) as thecb
+          left join
+          (SELECT * FROM ref_cip_soc_nces) as cip
+          on thecb.cip_join_key = cip.cip_join_key""")
+    con.commit()
 
 #%%
 #download cip soc and process 
@@ -91,11 +111,13 @@ upload_to_sqlite(con.cursor(),
                  chunk_print_size=1000)
 
 #need a general function that can map education data with occupation data 
+map_programs_to_schools(con)
 
 #build out a final table that looks like:
     #program - institution - occupation
-
-
+all_df = pd.read_sql("select * from join_program_occupations",con=con)
+all_df_filt = all_df.query("year == '2023'")
+all_df_filt.to_excel(r"C:\Users\cmg0530\Projects\cip_soc_crosswalk\Data Downloads\Sample Exports\test.xlsx")
 
 
 #%%
